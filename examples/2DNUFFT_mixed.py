@@ -1,12 +1,3 @@
-# typical imports
-# we have a simplified deep MD using only the radial information
-# and the inverse of the radial information. We don't allow the particules to be
-# too close, we allow biases in the pyramids and we multiply the outcome by 
-# the descriptor income (in order to preserve the zeros)
-# This version supports an inhomogeneous number of particules, however we need to 
-# provide a neighboor list. 
-
-# in this case we are not assuming rotational symmetry
 
 import tensorflow as tf
 import numpy as np
@@ -109,8 +100,7 @@ if not path.exists(dataFile):
     print("Creating %s data"%(DataType))
     pointsArray, \
     potentialArray, \
-    forcesArray  = genDataPer2DMixed(Ncells, Np, 
-                                mu1, mu2, Nsamples, 
+    forcesArray  = genDataPer2DMixed(Ncells, Np, mu1, mu2, Nsamples, 
                                 minDelta, Lcell, weight1, weight2)
 
   elif DataType == "YukawaPeriodic":
@@ -118,10 +108,8 @@ if not path.exists(dataFile):
     print("Creating %s data"%(DataType))
     pointsArray, \
     potentialArray, \
-    forcesArray  = genDataYukawa2DPermixed(Ncells, Np, 
-                                      mu1, mu2, Nsamples, 
-                                      minDelta, Lcell,
-                                      weight1,weight2)
+    forcesArray  = genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, 
+                                      minDelta, Lcell, weight1, weight2)
   
   hf = h5py.File(dataFile, 'w') 
   
@@ -159,7 +147,6 @@ genCoordinates = genDistInvPerNlistVec2D(Rin, neighList, L)
 filter = tf.cast(tf.reduce_sum(tf.abs(genCoordinates), axis = -1)>0, tf.int32)
 numNonZero =  tf.reduce_sum(filter, axis = 0).numpy()
 numTotal = genCoordinates.shape[0]  
-
 
 av = tf.reduce_sum(genCoordinates, 
                     axis = 0, 
@@ -203,69 +190,54 @@ class DeepMDsimpleEnergy(tf.keras.Model):
     self.descriptorDim = descripDim[-1]
     self.fftChannels = fftChannels
     # we may need to use the tanh here
-    self.layerPyramid   = pyramidLayer(descripDim, 
-                                       actfn = tf.nn.tanh)
-    self.layerPyramidDir  = pyramidLayer(descripDim, 
-                                       actfn = tf.nn.tanh)
-    self.NUFFTLayer = NUFFTLayerMultiChannel2Dmixed(fftChannels, \
-                                              NpointsFourier, 
-                                              xLims, 
-                                              mu1,mu2) 
-    self.layerPyramidLongRange  = pyramidLayer(descripDim, 
-                                       actfn = tf.nn.relu)    
-    self.fittingNetwork = pyramidLayer(fittingDim, 
-                                       actfn = tf.nn.tanh)
-    self.linfitNet      = MyDenseLayer(1)    
+    self.layerPyramid = pyramidLayer(descripDim, actfn = tf.nn.tanh)
+    self.layerPyramidDir = pyramidLayer(descripDim, actfn = tf.nn.tanh)
+    self.NUFFTLayer = NUFFTLayerMultiChannel2Dmixed(fftChannels, NpointsFourier, 
+                                                    xLims, mu1,mu2) 
+    self.layerPyramidLongRange = pyramidLayer(descripDim, actfn = tf.nn.relu)    
+    self.fittingNetwork = pyramidLayer(fittingDim, actfn = tf.nn.tanh)
+    self.linfitNet = MyDenseLayer(1)    
 
   @tf.function
   def call(self, inputs, neighList):
     with tf.GradientTape() as tape:
       # we watch the inputs 
-
       tape.watch(inputs)
       # (Nsamples, Npoints)
-      genCoordinates = genDistInvPerNlistVec2D(inputs, 
-                                              neighList, self.L, 
-                                              self.av, self.std) 
+      genCoordinates = genDistInvPerNlistVec2D(inputs, neighList, self.L, 
+                                               self.av, self.std) 
       # (Nsamples*Npoints*maxNumNeighs, 3)
-
       L1   = self.layerPyramid(genCoordinates[:,:1])*genCoordinates[:,:1]
       # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
       L2   = self.layerPyramidDir(genCoordinates[:,1:])*genCoordinates[:,:1]
-      # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
-        
+      # (Nsamples*Npoints*maxNumNeighs, descriptorDim)       
       LL = tf.concat([L1, L2], axis = 1)
       # (Nsamples*Npoints*maxNumNeighs, 2*descriptorDim)
-      Dtemp = tf.reshape(LL, (-1, self.maxNumNeighs,
-                              2*self.descriptorDim ))
+      Dtemp = tf.reshape(LL, (-1, self.maxNumNeighs, 2*self.descriptorDim))
       # (Nsamples*Npoints, maxNumNeighs, 2*descriptorDim)
       D_short = tf.reduce_sum(Dtemp, axis = 1)
       # (Nsamples*Npoints, 2*descriptorDim)
-
       long_range_coord = self.NUFFTLayer(inputs) 
       # # (Nsamples, Ncells*Np, 1)
-      long_range_coord2 = tf.reshape(long_range_coord, 
-                                     (-1, self.fftChannels))
+      long_range_coord2 = tf.reshape(long_range_coord, (-1, self.fftChannels))
       # (Nsamples*Ncells*Np, 1)
-      L3   = self.layerPyramidLongRange(long_range_coord2)
-      
+      L3   = self.layerPyramidLongRange(long_range_coord2)      
       DLongRange = tf.concat([D_short, L3], axis = 1)
       F2 = self.fittingNetwork(DLongRange)
       F = self.linfitNet(F2)
-
       Energy = tf.reduce_sum(tf.reshape(F, (-1, self.Npoints)),
-                              keepdims = True, axis = 1)
+                             keepdims = True, axis = 1)
 
     Forces = -tape.gradient(Energy, inputs)
 
     return Energy, Forces
 
 
-# moving the mean and std to Tensorflow format 
+# move the mean and std to Tensorflow format 
 avTF = tf.constant(av, dtype=tf.float32)
 stdTF = tf.constant(std, dtype=tf.float32)
 
-## Defining the model
+## Define the model
 model = DeepMDsimpleEnergy(Npoints, L, maxNumNeighs,
                            descriptorNet, fittingNet, 
                             avTF, stdTF,
@@ -317,18 +289,16 @@ loss_metric = tf.keras.metrics.Mean()
 if DataType == "Periodic":
     pointsTest, \
     potentialTest, \
-    forcesTest  = genDataPer2DMixed(Ncells, Np, 
-                                mu1, mu2, 100, 
-                                minDelta, Lcell, weight1, weight2)
+    forcesTest  = genDataPer2DMixed(Ncells, Np, mu1, mu2, 100, 
+                                    minDelta, Lcell, weight1, weight2)
 
 if DataType == "YukawaPeriodic":
     pointsTest, \
     potentialTest, \
-    forcesTest  = genDataYukawa2DPermixed(Ncells, Np, 
-                                      mu1, mu2, 100, 
-                                      minDelta, Lcell,weight1,weight2)
+    forcesTest = genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, 100, 
+                                          minDelta, Lcell, weight1, weight2)
     
-IdxTest = computInterList2DOpt(pointsTest, L,  radious, maxNumNeighs)
+IdxTest = computInterList2DOpt(pointsTest, L, radious, maxNumNeighs)
 neighListTest = tf.Variable(IdxTest)
 
 ###################training loop ##################################
@@ -360,24 +330,24 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
     for step, x_batch_train in enumerate(train_dataset):
 
       Rinnumpy = x_batch_train[0].numpy()
-      Idx = computInterList2DOpt(Rinnumpy, L,  radious, maxNumNeighs)
+      Idx = computInterList2DOpt(Rinnumpy, L, radious, maxNumNeighs)
       neighList = tf.Variable(Idx)
 
       loss = trainStepList(model, optimizer, mse_loss_fn,
                            x_batch_train[0], neighList,
                            x_batch_train[1], 
-                           x_batch_train[2], 
-                        weightE, weightF)
+                           x_batch_train[2], weightE, weightF)
       loss_metric(loss)
   
       if step % 100 == 0:
         print('step %s: mean loss = %s' % (step, str(loss_metric.result().numpy())))
 
-    Idx = computInterList2DOpt(pointsArray[:10,:,:], L,  radious, maxNumNeighs)
+    Idx = computInterList2DOpt(pointsArray[:10,:,:], L, radious, maxNumNeighs)
     neighList = tf.Variable(Idx)
 
     pottrain, forcetrain = model(pointsArray[:10,:,:],neighList)
-    errtrain = tf.sqrt(tf.reduce_sum(tf.square(forcetrain - forcesArray[:10,:,:])))/tf.sqrt(tf.reduce_sum(tf.square(forcetrain)))
+    errtrain = tf.sqrt(tf.reduce_sum(tf.square(forcetrain - forcesArray[:10,:,:])))\
+               /tf.sqrt(tf.reduce_sum(tf.square(forcetrain)))
     print("Relative Error in the trained forces is " +str(errtrain.numpy()))
 
     potPred, forcePred = model(pointsTest, neighListTest)
@@ -395,7 +365,7 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
         
     # mean loss saved in the metric
     meanLossStr = str(loss_metric.result().numpy())
-    # learning rate using the decay 
+    # decay learning rate 
     lrStr = str(optimizer._decayed_lr('float32').numpy())
     print('epoch %s: mean loss = %s  learning rate = %s'%(epoch,
                                                           meanLossStr,

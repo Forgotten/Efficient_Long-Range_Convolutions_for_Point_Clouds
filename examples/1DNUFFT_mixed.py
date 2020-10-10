@@ -93,7 +93,6 @@ print("Using data in %s"%(dataFile))
 
 # if the file doesn't exist we create it
 if not path.exists(dataFile):
-  # TODO: encapsulate all this in a function
   print("Data file does not exist, we create a new one")
 
   if DataType == "Periodic":
@@ -101,18 +100,16 @@ if not path.exists(dataFile):
     print("Creating %s data"%(DataType))
     pointsArray, \
     potentialArray, \
-    forcesArray  = gen_data_Per_Mixed(Ncells, Np, 
-                                mu1, mu2, Nsamples, 
-                                minDelta, Lcell, weight1, weight2)
+    forcesArray = gen_data_Per_Mixed(Ncells, Np, mu1, mu2, Nsamples, 
+                                      minDelta, Lcell, weight1, weight2)
 
   elif DataType == "YukawaPeriodic":
 
     print("Creating %s data"%(DataType))
     pointsArray, \
     potentialArray, \
-    forcesArray  = genDataYukawaPerMixed(Ncells, Np, 
-                                      mu1, mu2, Nsamples, 
-                                      minDelta, Lcell,weight1,weight2)
+    forcesArray = genDataYukawaPerMixed(Ncells, Np, mu1, mu2, Nsamples, 
+                                         minDelta, Lcell, weight1, weight2)
     
     
     
@@ -143,7 +140,7 @@ neighList = tf.Variable(Idx)
 Npoints = Np*Ncells
 
 genCoordinates = genDistInvPerNlistVec(Rin, neighList, L)
-# compute the generated coordinates
+# compute the generated coordinates in order to obtain av and std
 filter = tf.cast(tf.reduce_sum(tf.abs(genCoordinates), axis = -1)>0, tf.int32)
 numNonZero =  tf.reduce_sum(filter, axis = 0).numpy()
 numTotal = genCoordinates.shape[0] 
@@ -196,31 +193,27 @@ class DeepMDsimpleForces(tf.keras.Model):
     self.fittingDim = fittingDim
     self.descriptorDim = descripDim[-1]
     self.NpointsFourier = NpointsFourier
-    self.fftChannels    = fftChannels 
-    # we may need to use the tanh here
-    self.layerPyramid   = pyramidLayer(descripDim, 
+    self.fftChannels = fftChannels 
+    self.layerPyramid = pyramidLayer(descripDim, 
                                        actfn = tf.nn.tanh)
-    self.layerPyramidInv  = pyramidLayer(descripDim, 
+    self.layerPyramidInv = pyramidLayer(descripDim, 
                                        actfn = tf.nn.tanh)
-
     self.NUFFTLayerMultiChannelInitMixed = NUFFTLayerMultiChannelInitMixed(fftChannels, \
-      NpointsFourier, xLims, mu1,mu2)
-    self.layerPyramidLongRange  = pyramidLayer(descripDim, 
-                                       actfn = tf.nn.relu)
+                                                                           NpointsFourier, xLims, mu1,mu2)
+    self.layerPyramidLongRange = pyramidLayer(descripDim, 
+                                               actfn = tf.nn.relu)
     self.fittingNetwork = pyramidLayer(fittingDim, 
                                        actfn = tf.nn.tanh)
-    self.linfitNet      = MyDenseLayer(1)    
+    self.linfitNet = MyDenseLayer(1)    
 
   @tf.function
   def call(self, inputs, neighList):
 
     with tf.GradientTape() as tape:
       # we watch the inputs 
-
       tape.watch(inputs)
       # (Nsamples, Npoints)
-
-      genCoordinates = genDistInvPerNlistVec(inputs, neighList, self.L,self.av,self.std)
+      genCoordinates = genDistInvPerNlistVec(inputs, neighList, self.L, self.av, self.std)
 
       L1   = self.layerPyramid(genCoordinates[:,1:])*genCoordinates[:,0:1]
       # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
@@ -228,19 +221,16 @@ class DeepMDsimpleForces(tf.keras.Model):
       # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
       LL = tf.concat([L1, L2], axis = 1)
       # (Nsamples*Npoints*maxNumNeighs, 2*descriptorDim)
-      Dtemp = tf.reshape(LL, (-1, self.maxNumNeighs, 2*self.descriptorDim ))
+      Dtemp = tf.reshape(LL, (-1, self.maxNumNeighs, 2*self.descriptorDim))
       # (Nsamples*Npoints, maxNumNeighs, 2*descriptorDim)
       D = tf.reduce_sum(Dtemp, axis = 1)
-      # (Nsamples*Npoints, 2*descriptorDim)
-      
+      # (Nsamples*Npoints, 2*descriptorDim)      
       longRangewCoord = self.NUFFTLayerMultiChannelInitMixed(inputs)
       longRangewCoord2 = tf.reshape(longRangewCoord, (-1, self.fftChannels))
       # (Nsamples*Ncells*Np, 1)
       L3   = self.layerPyramidLongRange(longRangewCoord2)
       # (Nsamples*Ncells*Np, descriptorDim)
-
       DLongRange = tf.concat([D, L3], axis = 1)
-
       F2 = self.fittingNetwork(DLongRange)
       F = self.linfitNet(F2)
 
@@ -298,20 +288,16 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=lrSchedule)
 loss_metric = tf.keras.metrics.Mean()
 
 if DataType == "Periodic":
-
     pointsTest, \
     potentialTest, \
-    forcesTest  = gen_data_Per_Mixed(Ncells, Np, 
-                                mu1, mu2, 100, 
-                                minDelta, Lcell, weight1, weight2)
+    forcesTest  = gen_data_Per_Mixed(Ncells, Np, mu1, mu2, 100, 
+                                     minDelta, Lcell, weight1, weight2)
 
 if DataType == "YukawaPeriodic":
-
     pointsTest, \
     potentialTest, \
-    forcesTest  = genDataYukawaPerMixed(Ncells, Np, 
-                                      mu1, mu2, 100, 
-                                      minDelta, Lcell,weight1,weight2)
+    forcesTest  = genDataYukawaPerMixed(Ncells, Np, mu1, mu2, 100, 
+                                        minDelta, Lcell,weight1,weight2)
     
 IdxTest = computInterListOpt(pointsTest, L,  radious, maxNumNeighs)
 neighListTest = tf.Variable(IdxTest)
@@ -347,10 +333,9 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
       neighList = tf.Variable(Idx)
         
       loss = trainStepList(model, optimizer, mse_loss_fn,
-                        x_batch_train[0], neighList,
-                        x_batch_train[1], 
-                        x_batch_train[2],
-                        weightE, weightF)
+                           x_batch_train[0], neighList,
+                           x_batch_train[1], 
+                           x_batch_train[2], weightE, weightF)
       loss_metric(loss)
   
       if step % 100 == 0:
