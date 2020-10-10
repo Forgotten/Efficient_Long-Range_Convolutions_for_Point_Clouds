@@ -3,11 +3,8 @@ import numpy as np
 from numba import jit 
 
 @tf.function
-
 def genDistInvPerNlistVec3D(Rin, neighList, L, 
-
                             av = tf.constant([0.0, 0.0], dtype = tf.float32),
-
                             std =  tf.constant([1.0, 1.0], dtype = tf.float32)):
 
     # This function follows the same trick 
@@ -44,14 +41,12 @@ def genDistInvPerNlistVec3D(Rin, neighList, L,
     R_DiffY = R_DiffY - L*tf.round(R_DiffY/L)
     R_DiffZ = RinGatherZ - RinRepZ
     R_DiffZ = R_DiffZ - L*tf.round(R_DiffZ/L)
-    norm = tf.sqrt(   tf.square(R_DiffX) 
-                    + tf.square(R_DiffY)
-                    + tf.square(R_DiffZ))
+    norm = tf.sqrt(tf.square(R_DiffX) + tf.square(R_DiffY) + tf.square(R_DiffZ))
 
     binv = tf.math.reciprocal(norm) 
-    bx = tf.math.multiply(R_DiffX,binv)
-    by = tf.math.multiply(R_DiffY,binv)
-    bz = tf.math.multiply(R_DiffZ,binv)
+    bx = tf.math.multiply(R_DiffX, binv)
+    by = tf.math.multiply(R_DiffY, binv)
+    bz = tf.math.multiply(R_DiffZ, binv)
 
     zeroDummy = tf.zeros_like(norm)
     # add zero when the actual number of neighbors are less than maxNumNeigh

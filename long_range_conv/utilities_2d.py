@@ -3,7 +3,7 @@
 import tensorflow as tf
 import numpy as np 
 from numba import jit 
-
+# compute the generated coordinates
 @tf.function
 def genDistInvPerNlistVec2D(Rin, neighList, L, 
                             av = tf.constant([0.0, 0.0], dtype = tf.float32),
@@ -11,18 +11,16 @@ def genDistInvPerNlistVec2D(Rin, neighList, L,
     # This function follows the same trick 
     # function to generate the generalized coordinates for periodic data
     # neighList is a (Nsample, Npoints, maxNeigh)
-
     Nsamples = Rin.shape[0]
     maxNumNeighs = neighList.shape[-1]
-
     # define an indicator
     mask = neighList > -1
 
 
-    RinRepX  = tf.tile(tf.expand_dims(Rin[:,:,0], -1),[1 ,1, maxNumNeighs] )
+    RinRepX  = tf.tile(tf.expand_dims(Rin[:,:,0], -1), [1 ,1, maxNumNeighs])
     RinGatherX = tf.gather(Rin[:,:,0], neighList, batch_dims = 1, axis = 1)
 
-    RinRepY  = tf.tile(tf.expand_dims(Rin[:,:,1], -1),[1 ,1, maxNumNeighs] )
+    RinRepY  = tf.tile(tf.expand_dims(Rin[:,:,1], -1), [1 ,1, maxNumNeighs])
     RinGatherY = tf.gather(Rin[:,:,1], neighList, batch_dims = 1, axis = 1)
 
     # compute the periodic distance
@@ -35,8 +33,8 @@ def genDistInvPerNlistVec2D(Rin, neighList, L,
 
     
     binv = tf.math.reciprocal(norm) 
-    bx = tf.math.multiply(R_DiffX,binv)
-    by = tf.math.multiply(R_DiffY,binv)
+    bx = tf.math.multiply(R_DiffX, binv)
+    by = tf.math.multiply(R_DiffY, binv)
 
     zeroDummy = tf.zeros_like(norm)
     # add zero when the actual number of neighbors are less than maxNumNeigh 
@@ -45,13 +43,13 @@ def genDistInvPerNlistVec2D(Rin, neighList, L,
     by_safe = tf.where(mask, by, zeroDummy)
     
     R_total = tf.concat([tf.reshape(binv_safe, (-1,1)), 
-                         tf.reshape(bx_safe,    (-1,1)), 
-                         tf.reshape(by_safe,    (-1,1)) ], axis = 1)
+                         tf.reshape(bx_safe, (-1,1)), 
+                         tf.reshape(by_safe, (-1,1))], axis = 1)
 
     return R_total
 
 
-
+# the function for training
 @tf.function
 def trainStepList(model, optimizer, loss,
                     inputs, neighList, outputsE, outputsF, 
@@ -75,7 +73,7 @@ def trainStepList(model, optimizer, loss,
 
   return total_loss
 
-
+# compute the neighbor list
 @jit(nopython=True)
 def computInterList2DOpt(Rinnumpy, L,  radious, maxNumNeighs):
   # function to compute the interaction lists 
@@ -110,7 +108,7 @@ def computInterList2DOpt(Rinnumpy, L,  radious, maxNumNeighs):
 
   return Idx
 
-
+# dense layer
 class MyDenseLayer(tf.keras.layers.Layer):
   def __init__(self, num_outputs, 
                      initializer = tf.initializers.GlorotNormal()):
