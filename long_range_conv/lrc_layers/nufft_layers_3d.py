@@ -1,0 +1,182 @@
+
+
+import tensorflow as tf
+import numpy as np 
+
+
+
+@tf.function 
+def gaussianPer(x, tau, L = 2*np.pi):
+
+  return tf.exp( -tf.square(x  )/(4*tau)) + \
+         tf.exp( -tf.square(x-L)/(4*tau)) + \
+         tf.exp( -tf.square(x+L)/(4*tau))
+
+
+
+@tf.function 
+def gaussianDeconv2D(kx, ky, tau):
+  return (np.pi/tau)*tf.exp((tf.square(kx) + tf.square(ky))*tau)
+
+
+
+@tf.function 
+def gaussianDeconv3D(kx, ky, kz, tau):
+
+  return tf.sqrt(np.pi/tau)**3*tf.exp((  tf.square(kx) \
+                                    + tf.square(ky) \
+                                    + tf.square(kz))*tau)
+
+
+
+
+class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
+  def __init__(self, nChannels, NpointsMesh, xLims, 
+               mu0 = 1.0, mu1 = 1.0):
+    super(NUFFTLayerMultiChannel3D, self).__init__()
+    self.nChannels = nChannels
+    self.NpointsMesh = NpointsMesh 
+    # this is for the initial guess 
+    self.mu0 = tf.constant(mu0, dtype=tf.float32)
+    self.mu1 = tf.constant(mu1, dtype=tf.float32)
+    # we need the number of points to be odd 
+    assert NpointsMesh % 2 == 1
+
+    self.xLims = xLims
+    print(xLims)
+    self.L = np.abs(self.xLims[1] - self.xLims[0])
+    self.tau = tf.constant(12*(self.L/(2*np.pi*NpointsMesh))**2, 
+                           dtype = tf.float32)# the size of the mollifications
+    self.kGrid = tf.constant((2*np.pi/self.L)*\
+                              np.linspace(-(NpointsMesh//2), 
+                                            NpointsMesh//2, 
+                                            NpointsMesh), 
+                              dtype = tf.float32)
+    self.ky_grid,\
+    self.kx_grid,\
+    self.kz_grid = tf.meshgrid(self.kGrid, 
+                               self.kGrid,
+                               self.kGrid ) 
+
+    # we need to define a mesh betwen xLims[0] and xLims[1]
+    self.xGrid =  tf.constant(np.linspace(xLims[0], 
+                                          xLims[1], 
+                                          NpointsMesh+1)[:-1], 
+                              dtype = tf.float32)
+    self.y_grid,\
+    self.x_grid,\
+    self.z_grid = tf.meshgrid(self.xGrid,
+                              self.xGrid, 
+                              self.xGrid) 
+
+  def build(self, input_shape):
+
+    print("building the channels")
+    
+    self.shift = []
+    for ii in range(2):
+      self.shift.append(self.add_weight("std_"+str(ii),
+                       initializer=tf.initializers.ones(),
+                       shape=[1,]))
+    self.amplitud = []
+    for ii in range(2):
+      self.amplitud.append(self.add_weight("bias_"+str(ii),
+                       initializer=tf.initializers.ones(),
+                       shape=[1,]))
+
+    # this needs to be properly initialized it
+
+  @tf.function
+  def call(self, input):
+    # we need to add an iterpolation step
+    # this needs to be perodic distance!!!
+    # (batch_size, Np*Ncells, 2)
+    diffx  = tf.expand_dims(tf.expand_dims(tf.expand_dims(input[:,:,0:1], -1), -1),-1) \
+           - tf.reshape(self.x_grid, (1,1, 
+                                      self.NpointsMesh, 
+                                      self.NpointsMesh, 
+                                      self.NpointsMesh))
+
+    diffy  = tf.expand_dims(tf.expand_dims(tf.expand_dims(input[:,:,1:2], -1), -1),-1) \
+          - tf.reshape(self.y_grid, (1,1, 
+                                      self.NpointsMesh, 
+                                      self.NpointsMesh, 
+                                      self.NpointsMesh))
+
+    diffz  = tf.expand_dims(tf.expand_dims(tf.expand_dims(input[:,:,2:], -1), -1),-1) \
+           - tf.reshape(self.z_grid, (1,1, 
+                                      self.NpointsMesh, 
+                                      self.NpointsMesh, 
+                                      self.NpointsMesh))
+    # we compute all the gaussians
+    array_gaussian_x = gaussianPer(diffx, self.tau, self.L)
+    array_gaussian_y = gaussianPer(diffy, self.tau, self.L)
+    array_gaussian_z = gaussianPer(diffz, self.tau, self.L)
+
+    # we multiply the components
+    array_gaussian = array_gaussian_x \
+                    *array_gaussian_y \
+                    *array_gaussian_z
+
+    arrayReducGaussian = tf.complex(array_gaussian, 0.0)
+
+    fftGauss = tf.signal.fftshift(tf.signal.fft3d(arrayReducGaussian))
+    ##(batch_size, Npoints, NpointsMesh,NpointsMesh,NpointsMesh)
+    # compute the deconvolution kernel 
+    gauss_deconv = gaussianDeconv3D(self.kx_grid, 
+                                    self.ky_grid, 
+                                    self.kz_grid, 
+                                    self.tau)
+    Deconv = tf.complex(tf.expand_dims(tf.expand_dims(gauss_deconv, 0),0),0.0)
+    #(1, 1, NpointsMesh, NpointsMesh,NpointsMesh)
+
+    rfft = tf.multiply(fftGauss, Deconv)
+    Rerfft = tf.math.real(rfft)
+    Imrfft = tf.math.imag(rfft)
+
+    multiplier1 = tf.expand_dims(tf.expand_dims(self.amplitud[0]*4*np.pi*\
+                                tf.math.reciprocal( tf.square(self.kx_grid) + \
+                                                    tf.square(self.ky_grid) +\
+                                                    tf.square(self.kz_grid)+\
+                                tf.square(self.mu0*self.shift[0])), 0),0)
+
+    multiplierRe1 = tf.math.real(multiplier1) 
+    multReRefft = tf.multiply(multiplierRe1, Rerfft)
+    multImRefft = tf.multiply(multiplierRe1, Imrfft)
+    multfft = tf.complex(multReRefft,multImRefft)
+    #(batch_size, Npoints, NpointsMesh, NpointsMesh,NpointsMesh)
+    
+    multiplier2 = tf.expand_dims(tf.expand_dims(self.amplitud[1]*4*np.pi*\
+                                tf.math.reciprocal( tf.square(self.kx_grid) + \
+                                                    tf.square(self.ky_grid) +\
+                                                    tf.square(self.kz_grid)+\
+                                tf.square(self.mu1*self.shift[1])), 0),0)
+    multiplierRe2 = tf.math.real(multiplier2)
+    multReRefft2 = tf.multiply(multiplierRe2 , Rerfft)
+    multImRefft2 = tf.multiply(multiplierRe2 , Imrfft)
+    multfft2 = tf.complex(multReRefft2, multImRefft2)
+    #(batch_size, Npoints, NpointsMesh, NpointsMesh,NpointsMesh)
+
+    multfftDeconv1 = tf.multiply(multfft, Deconv)
+    irfft1 = tf.math.real(tf.signal.ifft3d(
+                         tf.signal.ifftshift(multfftDeconv1)))/(2*np.pi*self.NpointsMesh/self.L)**3/(2*np.pi)**3/2
+    #(batch_size, Npoints, NpointsMesh, NpointsMesh,NpointsMesh)
+
+    diag_sum1 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft1*array_gaussian,axis=-1),axis=-1),axis=-1)
+    ##(Nsamples,Npoints)
+    total1 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft1,axis=1,keepdims=True)*array_gaussian,axis=-1),axis=-1) ,axis=-1)   
+    ##(Nsamples,Npoints)
+    energy1 = total1 - diag_sum1
+    ##(Nsamples,Npoints)
+    
+    multfftDeconv2 = tf.multiply(multfft2, Deconv)
+    irfft2 = tf.math.real(tf.signal.ifft3d(
+                         tf.signal.ifftshift(multfftDeconv2)))/(2*np.pi*self.NpointsMesh/self.L)**3/(2*np.pi)**3/2    
+    diag_sum2 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft2*array_gaussian,axis=-1),axis=-1),axis=-1)
+    total2 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft2,axis=1,keepdims=True)*array_gaussian,axis=-1),axis=-1),axis=-1)    
+    energy2 = total2 - diag_sum2
+
+    energy = tf.concat([tf.expand_dims(energy1,axis=-1),tf.expand_dims(energy2,axis=-1)],axis=-1)
+    print('energy',energy.shape)
+    return energy
+
