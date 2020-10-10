@@ -128,7 +128,7 @@ def genDataPer3DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,we
         F2 = forces_per3D(points,pointsT, mu2, L)
         Forces2 = np.sum(F2, axis = 1) 
 
-        forcesArray[i,:,:] = np.reshape(Forces1,(Np*Ncells**3, 3))*weight1+\
+        forcesArray[i,:,:] = np.reshape(Forces1,(Np*Ncells**3, 3))*weight1 +\
                              np.reshape(Forces2,(Np*Ncells**3, 3))*weight2
 
     return pointsArray, potentialArray, forcesArray

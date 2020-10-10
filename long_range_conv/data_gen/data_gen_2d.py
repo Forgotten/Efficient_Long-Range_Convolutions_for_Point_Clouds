@@ -1,5 +1,3 @@
-
-
 import numpy as np
 
 def potential(x,y, mu):
@@ -78,7 +76,7 @@ def computeDerPot2DPer(Nx, mu, Ls, x_center = [0.0, 0.0], nPointSmear = 5):
 
 
 
-
+# compute Yukawa data
 def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,weight2): 
 
     points_array = np.zeros((Nsamples, Np*Ncells**2, 2))
@@ -116,11 +114,11 @@ def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weig
         # to avoid two points are too close: sigularity 
         while np.min(dist) < minDelta:
             idx_point_x = idx_start_x.reshape((Ncells, Ncells, 1)) \
-                      + np.random.choice(idx_cell_x.reshape((-1,)), 
-                                         [Ncells, Ncells, Np])
+                          + np.random.choice(idx_cell_x.reshape((-1,)), 
+                                             [Ncells, Ncells, Np])
             idx_point_y = idx_start_y.reshape((Ncells, Ncells, 1)) \
-                      + np.random.choice(idx_cell_y.reshape((-1,)), 
-                                         [Ncells, Ncells, Np])
+                          + np.random.choice(idx_cell_y.reshape((-1,)), 
+                                             [Ncells, Ncells, Np])
 
             points_x = x_grid[idx_point_x, 0]
             points_y = y_grid[0, idx_point_y]
@@ -140,17 +138,13 @@ def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weig
         points_array[i, :, 1] = y_grid[0, idx_point_y.reshape((-1,))]
 
 
-        R1 = pot1[idx_point_x.reshape((-1,1)) 
-                        - idx_point_x.reshape((-1,1)).T, 
-                        idx_point_y.reshape((-1,1)) 
-                        - idx_point_y.reshape((-1,1)).T]
+        R1 = pot1[idx_point_x.reshape((-1,1)) - idx_point_x.reshape((-1,1)).T, 
+                  idx_point_y.reshape((-1,1)) - idx_point_y.reshape((-1,1)).T]
         RR1 = np.triu(R1, 1)
         potTotal1 = np.sum(RR1)
 
-        R2 = pot2[idx_point_x.reshape((-1,1)) 
-                        - idx_point_x.reshape((-1,1)).T, 
-                        idx_point_y.reshape((-1,1)) 
-                        - idx_point_y.reshape((-1,1)).T]
+        R2 = pot2[idx_point_x.reshape((-1,1)) - idx_point_x.reshape((-1,1)).T, 
+                  idx_point_y.reshape((-1,1)) - idx_point_y.reshape((-1,1)).T]
         RR2 = np.triu(R2, 1)
         potTotal2 = np.sum(RR2)
 
@@ -158,30 +152,22 @@ def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weig
 
 
 
-        Fx1 = dpotdx1[  idx_point_x.reshape((-1,1)) 
-                    - idx_point_x.reshape((-1,1)).T, 
-                      idx_point_y.reshape((-1,1)) 
-                    - idx_point_y.reshape((-1,1)).T]
+        Fx1 = dpotdx1[idx_point_x.reshape((-1,1)) - idx_point_x.reshape((-1,1)).T, 
+                      idx_point_y.reshape((-1,1)) - idx_point_y.reshape((-1,1)).T]
 
-        Fy1 = dpotdy1[  idx_point_x.reshape((-1,1)) 
-                    - idx_point_x.reshape((-1,1)).T, 
-                      idx_point_y.reshape((-1,1)) 
-                    - idx_point_y.reshape((-1,1)).T]
+        Fy1 = dpotdy1[idx_point_x.reshape((-1,1)) - idx_point_x.reshape((-1,1)).T, 
+                      idx_point_y.reshape((-1,1)) - idx_point_y.reshape((-1,1)).T]
                                          
         Fx1 = np.triu(Fx1,1) + np.tril(Fx1,-1)
         Fy1 = np.triu(Fy1,1) + np.tril(Fy1,-1)
         Forcesx1 = -np.sum(Fx1, axis = 1) 
         Forcesy1 = -np.sum(Fy1, axis = 1) 
 
-        Fx2 = dpotdx2[  idx_point_x.reshape((-1,1)) 
-                    - idx_point_x.reshape((-1,1)).T, 
-                      idx_point_y.reshape((-1,1)) 
-                    - idx_point_y.reshape((-1,1)).T]
+        Fx2 = dpotdx2[idx_point_x.reshape((-1,1)) - idx_point_x.reshape((-1,1)).T, 
+                      idx_point_y.reshape((-1,1)) - idx_point_y.reshape((-1,1)).T]
 
-        Fy2 = dpotdy2[  idx_point_x.reshape((-1,1)) 
-                    - idx_point_x.reshape((-1,1)).T, 
-                      idx_point_y.reshape((-1,1)) 
-                    - idx_point_y.reshape((-1,1)).T]
+        Fy2 = dpotdy2[idx_point_x.reshape((-1,1)) - idx_point_x.reshape((-1,1)).T, 
+                      idx_point_y.reshape((-1,1)) - idx_point_y.reshape((-1,1)).T]
                                          
         Fx2 = np.triu(Fx2,1) + np.tril(Fx2,-1)
         Fy2 = np.triu(Fy2,1) + np.tril(Fy2,-1)
@@ -194,7 +180,7 @@ def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weig
 
     return points_array, potential_array, forces_array
 
-
+# compute exponential data
 def genDataPer2DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta = 0.0, Lcell = 0.0, weight1=0.5, weight2=0.5): 
 
 	pointsArray = np.zeros((Nsamples, Np*Ncells**2, 2))
