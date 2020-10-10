@@ -110,7 +110,7 @@ class NUFFTLayerMultiChannel2Dmixed(tf.keras.layers.Layer):
     # compute two multipliers
     multiplier1 = tf.expand_dims(tf.expand_dims(self.amplitud[0]*4*np.pi*\
                                 tf.math.reciprocal( tf.square(self.kx_grid) + \
-                                                    tf.square(self.ky_grid) +\
+                                                    tf.square(self.ky_grid) + \
                                 tf.square(self.mu0*self.shift[0])), 0),0)
     multiplierRe1 = tf.math.real(multiplier1)    
     multReRefft = tf.multiply(multiplierRe1,Rerfft)
@@ -120,7 +120,7 @@ class NUFFTLayerMultiChannel2Dmixed(tf.keras.layers.Layer):
 
     multiplier2 = tf.expand_dims(tf.expand_dims(self.amplitud[1]*4*np.pi*\
                                 tf.math.reciprocal( tf.square(self.kx_grid) + \
-                                                    tf.square(self.ky_grid) +\
+                                                    tf.square(self.ky_grid) + \
                                 tf.square(self.mu1*self.shift[1])), 0),0)
     multiplierRe2 = tf.math.real(multiplier2)    
     multReRefft2 = tf.multiply(multiplierRe2,Rerfft)

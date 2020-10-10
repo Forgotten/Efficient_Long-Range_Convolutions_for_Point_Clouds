@@ -7,7 +7,7 @@ import numpy as np
 
 @tf.function 
 def gaussianPer(x, tau, L = 2*np.pi):
-
+    
   return tf.exp( -tf.square(x  )/(4*tau)) + \
          tf.exp( -tf.square(x-L)/(4*tau)) + \
          tf.exp( -tf.square(x+L)/(4*tau))
@@ -16,6 +16,7 @@ def gaussianPer(x, tau, L = 2*np.pi):
 
 @tf.function 
 def gaussianDeconv2D(kx, ky, tau):
+    
   return (np.pi/tau)*tf.exp((tf.square(kx) + tf.square(ky))*tau)
 
 
@@ -114,9 +115,7 @@ class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
     array_gaussian_z = gaussianPer(diffz, self.tau, self.L)
 
     # we multiply the components
-    array_gaussian = array_gaussian_x \
-                    *array_gaussian_y \
-                    *array_gaussian_z
+    array_gaussian = array_gaussian_x*array_gaussian_y*array_gaussian_z
 
     arrayReducGaussian = tf.complex(array_gaussian, 0.0)
 
@@ -136,8 +135,8 @@ class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
 
     multiplier1 = tf.expand_dims(tf.expand_dims(self.amplitud[0]*4*np.pi*\
                                 tf.math.reciprocal( tf.square(self.kx_grid) + \
-                                                    tf.square(self.ky_grid) +\
-                                                    tf.square(self.kz_grid)+\
+                                                    tf.square(self.ky_grid) + \
+                                                    tf.square(self.kz_grid) + \
                                 tf.square(self.mu0*self.shift[0])), 0),0)
 
     multiplierRe1 = tf.math.real(multiplier1) 
@@ -148,8 +147,8 @@ class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
     
     multiplier2 = tf.expand_dims(tf.expand_dims(self.amplitud[1]*4*np.pi*\
                                 tf.math.reciprocal( tf.square(self.kx_grid) + \
-                                                    tf.square(self.ky_grid) +\
-                                                    tf.square(self.kz_grid)+\
+                                                    tf.square(self.ky_grid) + \
+                                                    tf.square(self.kz_grid) + \
                                 tf.square(self.mu1*self.shift[1])), 0),0)
     multiplierRe2 = tf.math.real(multiplier2)
     multReRefft2 = tf.multiply(multiplierRe2 , Rerfft)
@@ -166,6 +165,7 @@ class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
     ##(Nsamples,Npoints)
     total1 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft1,axis=1,keepdims=True)*array_gaussian,axis=-1),axis=-1) ,axis=-1)   
     ##(Nsamples,Npoints)
+    # we delete the diagonal part 
     energy1 = total1 - diag_sum1
     ##(Nsamples,Npoints)
     
