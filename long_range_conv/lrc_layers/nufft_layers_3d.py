@@ -1,8 +1,5 @@
-
-
 import tensorflow as tf
 import numpy as np 
-
 
 
 @tf.function 
@@ -12,13 +9,10 @@ def gaussianPer(x, tau, L = 2*np.pi):
          tf.exp( -tf.square(x-L)/(4*tau)) + \
          tf.exp( -tf.square(x+L)/(4*tau))
 
-
-
 @tf.function 
 def gaussianDeconv2D(kx, ky, tau):
     
   return (np.pi/tau)*tf.exp((tf.square(kx) + tf.square(ky))*tau)
-
 
 
 @tf.function 
@@ -29,17 +23,20 @@ def gaussianDeconv3D(kx, ky, kz, tau):
                                     + tf.square(kz))*tau)
 
 
-
-
 class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
   def __init__(self, nChannels, NpointsMesh, xLims, 
                mu0 = 1.0, mu1 = 1.0):
     super(NUFFTLayerMultiChannel3D, self).__init__()
+    
+    # number of channles (so far fixed to two)
     self.nChannels = nChannels
+    # numer of points for the underlying mesh (nufft)
     self.NpointsMesh = NpointsMesh 
-    # this is for the initial guess 
+
+    # Initial guess for the parameters 
     self.mu0 = tf.constant(mu0, dtype=tf.float32)
     self.mu1 = tf.constant(mu1, dtype=tf.float32)
+    
     # we need the number of points to be odd 
     assert NpointsMesh % 2 == 1
 
@@ -48,11 +45,14 @@ class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
     self.L = np.abs(self.xLims[1] - self.xLims[0])
     self.tau = tf.constant(12*(self.L/(2*np.pi*NpointsMesh))**2, 
                            dtype = tf.float32)# the size of the mollifications
+    
+    # frequency grid
     self.kGrid = tf.constant((2*np.pi/self.L)*\
                               np.linspace(-(NpointsMesh//2), 
                                             NpointsMesh//2, 
                                             NpointsMesh), 
                               dtype = tf.float32)
+
     self.ky_grid,\
     self.kx_grid,\
     self.kz_grid = tf.meshgrid(self.kGrid, 
@@ -76,12 +76,12 @@ class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
     
     self.shift = []
     for ii in range(2):
-      self.shift.append(self.add_weight("std_"+str(ii),
+      self.shift.append(self.add_weight("shift_"+str(ii),
                        initializer=tf.initializers.ones(),
                        shape=[1,]))
     self.amplitud = []
     for ii in range(2):
-      self.amplitud.append(self.add_weight("bias_"+str(ii),
+      self.amplitud.append(self.add_weight("decay_"+str(ii),
                        initializer=tf.initializers.ones(),
                        shape=[1,]))
 
@@ -172,11 +172,17 @@ class NUFFTLayerMultiChannel3D(tf.keras.layers.Layer):
     multfftDeconv2 = tf.multiply(multfft2, Deconv)
     irfft2 = tf.math.real(tf.signal.ifft3d(
                          tf.signal.ifftshift(multfftDeconv2)))/(2*np.pi*self.NpointsMesh/self.L)**3/(2*np.pi)**3/2    
-    diag_sum2 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft2*array_gaussian,axis=-1),axis=-1),axis=-1)
-    total2 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft2,axis=1,keepdims=True)*array_gaussian,axis=-1),axis=-1),axis=-1)    
+    
+    diag_sum2 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft2*array_gaussian,\
+                                                          axis=-1),axis=-1),axis=-1)
+    total2 = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(irfft2,\
+                                        axis=1,keepdims=True)*array_gaussian,\
+                                        axis=-1),axis=-1),axis=-1)    
     energy2 = total2 - diag_sum2
 
     energy = tf.concat([tf.expand_dims(energy1,axis=-1),tf.expand_dims(energy2,axis=-1)],axis=-1)
-    print('energy',energy.shape)
+    
+    #print('energy',energy.shape)
+    
     return energy
 

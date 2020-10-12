@@ -10,7 +10,7 @@ def forces_per(x,y, mu,L):
            -mu*np.sign(y - x - L)*np.exp( -mu*np.abs(y - x - L) ) +\
            -mu*np.sign(y - x + L)*np.exp( -mu*np.abs(y - x + L) )
 
-def gen_data_per_Mixed(Ncells, Np, mu1, mu2, n_samples, minDelta = 0.0, Lcell = 0.0 , weight1=0.5 , weight2=0.5):
+def gen_data_per_mixed(Ncells, Np, mu1, mu2, n_samples, minDelta = 0.0, Lcell = 0.0 , weight1=0.5 , weight2=0.5):
     
     pointsArray = np.zeros((n_samples, Np*Ncells))
     potentialArray = np.zeros((n_samples,1))
@@ -52,7 +52,9 @@ def gen_data_per_Mixed(Ncells, Np, mu1, mu2, n_samples, minDelta = 0.0, Lcell = 
 
 
 
-def genDataYukawaPerMixed(Ncells, Np, sigma1, sigma2, n_samples, minDelta = 0.0, Lcell = 0.0,weight1=0.5,weight2=0.5):
+def gen_data_yukawa_mixed(Ncells, Np, sigma1, sigma2, 
+                          n_samples, minDelta = 0.0, Lcell = 0.0,
+                          weight1=0.5, weight2=0.5):
 
     pointsArray = np.zeros((n_samples, Np*Ncells))
     potentialArray = np.zeros((n_samples,1))

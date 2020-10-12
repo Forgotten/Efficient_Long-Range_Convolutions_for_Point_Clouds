@@ -9,9 +9,9 @@ import json
 import csv
 import time
 
-from long_range_conv.data_gen.data_gen_1d import genDataYukawaPerMixed,gen_data_Per_Mixed
+from long_range_conv.data_gen.data_gen_1d import gen_data_yukawa_mixed, gen_data_per_mixed
 from long_range_conv.utilities import gen_coor_1d 
-from long_range_conv.utilities import trainStepList
+from long_range_conv.utilities import train_step
 from long_range_conv.utilities import comput_inter_list
 
 # import vanilla layers 
@@ -70,8 +70,6 @@ L = Lcell*Ncells
 xLims = [0.0, L]
 
 
-
-
 dataFile = dataFolder + "data_1D"+ DataType + \
                         "_Ncells_" + str(Ncells) + \
                         "_Np_" + str(Np) + \
@@ -105,7 +103,7 @@ if not path.exists(dataFile):
     print("Creating %s data"%(DataType))
     pointsArray, \
     potentialArray, \
-    forcesArray = gen_data_Per_Mixed(Ncells, Np, mu1, mu2, Nsamples, 
+    forcesArray = gen_data_per_mixed(Ncells, Np, mu1, mu2, Nsamples, 
                                       minDelta, Lcell, weight1, weight2)
 
   elif DataType == "YukawaPeriodic":
@@ -113,7 +111,7 @@ if not path.exists(dataFile):
     print("Creating %s data"%(DataType))
     pointsArray, \
     potentialArray, \
-    forcesArray = genDataYukawaPerMixed(Ncells, Np, mu1, mu2, Nsamples, 
+    forcesArray = gen_data_yukawa_mixed( Ncells, Np, mu1, mu2, Nsamples, 
                                          minDelta, Lcell, weight1, weight2)
     
   # creating file to write the data
@@ -138,7 +136,7 @@ Rin = Rinput[0:100,:]
 Rinnumpy = Rin.numpy()
 
 
-Idx = computInterListOpt(Rinnumpy, L,  radious, maxNumNeighs)
+Idx = gen_data_per_mixed(Rinnumpy, L,  radious, maxNumNeighs)
 # compute the neighbor list. shape:(Nsamples, Npoints and MaxNumneighs)
 neighList = tf.Variable(Idx)
 Npoints = Np*Ncells
@@ -280,9 +278,13 @@ print(Nepochs)
 print("Training batch sizes for each cycle")
 print(batchSizeArray)
 
-### optimization parameters ##
+
+## Optimization parameters ##
+
+# defining the loss
 mse_loss_fn = tf.keras.losses.MeanSquaredError()
 
+# defining the loss rate and  the schedule
 initialLearningRate = learningRate
 lrSchedule = tf.keras.optimizers.schedules.ExponentialDecay(
              initialLearningRate,
@@ -290,24 +292,33 @@ lrSchedule = tf.keras.optimizers.schedules.ExponentialDecay(
              decay_rate=decayRate,
              staircase=True)
 
+# defining the optimizer
 optimizer = tf.keras.optimizers.Adam(learning_rate=lrSchedule)
 
+# defining the loss metric
 loss_metric = tf.keras.metrics.Mean()
 
+## Sampling test data ##
+
+# Sampling the correct type of data
 if DataType == "Periodic":
     pointsTest, \
     potentialTest, \
-    forcesTest  = gen_data_Per_Mixed(Ncells, Np, mu1, mu2, 100, 
+    forcesTest  = gen_data_per_mixed(Ncells, Np, mu1, mu2, 100, 
                                      minDelta, Lcell, weight1, weight2)
 
 if DataType == "YukawaPeriodic":
     pointsTest, \
     potentialTest, \
-    forcesTest  = genDataYukawaPerMixed(Ncells, Np, mu1, mu2, 100, 
+    forcesTest  = gen_data_yukawa_mixed( Ncells, Np, mu1, mu2, 100, 
                                         minDelta, Lcell,weight1,weight2)
-    
-IdxTest = computInterListOpt(pointsTest, L,  radious, maxNumNeighs)
+
+# computing the interaction lists
+IdxTest = gen_data_per_mixed(pointsTest, L,  radious, maxNumNeighs)
 neighListTest = tf.Variable(IdxTest)
+
+
+## Training Loop ##
 
 for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
 
@@ -336,10 +347,10 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
     for step, x_batch_train in enumerate(train_dataset):
         
       Rinnumpy = x_batch_train[0].numpy()
-      Idx = computInterListOpt(Rinnumpy, L,  radious, maxNumNeighs)
+      Idx = gen_data_per_mixed(Rinnumpy, L,  radious, maxNumNeighs)
       neighList = tf.Variable(Idx)
         
-      loss = trainStepList(model, optimizer, mse_loss_fn,
+      loss = train_step(model, optimizer, mse_loss_fn,
                            x_batch_train[0], neighList,
                            x_batch_train[1], 
                            x_batch_train[2], weightE, weightF)

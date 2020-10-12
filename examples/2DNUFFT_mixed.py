@@ -9,10 +9,14 @@ import sys
 import json
 import time
 import csv
-from data_gen_2d import genDataYukawa2DPermixed, genDataPer2DMixed
-from nufft_layers_2d import NUFFTLayerMultiChannel2Dmixed
-from utilities_2d import genDistInvPerNlistVec2D, trainStepList, computInterList2DOpt
-from utilities_2d import MyDenseLayer, pyramidLayer
+from long_range_conv.data_gen.data_gen_2d import gen_data_yukawa_2d_mixed, genDataPer2DMixed
+from long_range_conv.lrc_layers.nufft_layers_2d import NUFFTLayerMultiChannel2Dmixed
+
+from long_range_conv.utilities_2d import gen_coor_2d
+from long_range_conv.utilities_2d import train_step
+from long_range_conv.utilities_2d import comput_inter_list
+from long_range_conv.utilities_2d import DenseLayer
+from long_range_conv.utilities_2d import PyramidLayer
 
 import os
 
@@ -108,7 +112,7 @@ if not path.exists(dataFile):
     print("Creating %s data"%(DataType))
     pointsArray, \
     potentialArray, \
-    forcesArray  = genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, 
+    forcesArray  = gen_data_yukawa_2d_mixed(Ncells, Np, mu1, mu2, Nsamples, 
                                       minDelta, Lcell, weight1, weight2)
   
   hf = h5py.File(dataFile, 'w') 
@@ -136,13 +140,13 @@ Rinput = tf.Variable(pointsArray, name="input", dtype = tf.float32)
 Rin = Rinput[:100,:,:]
 Rinnumpy = Rin.numpy()
 
-Idx = computInterList2DOpt(Rinnumpy, L,  radious, maxNumNeighs)
+Idx = comput_inter_list(Rinnumpy, L,  radious, maxNumNeighs)
 # compute the neighbor list. shape:(Nsamples, Npoints and MaxNumneighs)
 neighList = tf.Variable(Idx)
 Npoints = Np*Ncells**2
 
 
-genCoordinates = genDistInvPerNlistVec2D(Rin, neighList, L)
+genCoordinates = gen_coor_2d(Rin, neighList, L)
 # compute the generated coordinates
 filter = tf.cast(tf.reduce_sum(tf.abs(genCoordinates), axis = -1)>0, tf.int32)
 numNonZero =  tf.reduce_sum(filter, axis = 0).numpy()
@@ -190,13 +194,15 @@ class DeepMDsimpleEnergy(tf.keras.Model):
     self.descriptorDim = descripDim[-1]
     self.fftChannels = fftChannels
     # we may need to use the tanh here
-    self.layerPyramid = pyramidLayer(descripDim, actfn = tf.nn.tanh)
-    self.layerPyramidDir = pyramidLayer(descripDim, actfn = tf.nn.tanh)
-    self.NUFFTLayer = NUFFTLayerMultiChannel2Dmixed(fftChannels, NpointsFourier, 
-                                                    xLims, mu1,mu2) 
-    self.layerPyramidLongRange = pyramidLayer(descripDim, actfn = tf.nn.relu)    
+    self.layer_pyramid = pyramidLayer(descripDim, actfn = tf.nn.tanh)
+    self.layer_pyramid_dir = pyramidLayer(descripDim, actfn = tf.nn.tanh)
+
+    self.lrc_layer = NUFFTLayerMultiChannel2Dmixed(fftChannels, NpointsFourier, 
+                                                    xLims, mu1, mu2) 
+
+    self.layer_pyramid_lr = pyramidLayer(descripDim, actfn = tf.nn.relu)    
     self.fittingNetwork = pyramidLayer(fittingDim, actfn = tf.nn.tanh)
-    self.linfitNet = MyDenseLayer(1)    
+    self.linfitNet = DenseLayer(1)    
 
   @tf.function
   def call(self, inputs, neighList):
@@ -204,12 +210,12 @@ class DeepMDsimpleEnergy(tf.keras.Model):
       # we watch the inputs 
       tape.watch(inputs)
       # (Nsamples, Npoints)
-      genCoordinates = genDistInvPerNlistVec2D(inputs, neighList, self.L, 
+      genCoordinates = gen_coor_2d(inputs, neighList, self.L, 
                                                self.av, self.std) 
       # (Nsamples*Npoints*maxNumNeighs, 3)
-      L1   = self.layerPyramid(genCoordinates[:,:1])*genCoordinates[:,:1]
+      L1   = self.layer_pyramid(genCoordinates[:,:1])*genCoordinates[:,:1]
       # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
-      L2   = self.layerPyramidDir(genCoordinates[:,1:])*genCoordinates[:,:1]
+      L2   = self.layer_pyramid_dir(genCoordinates[:,1:])*genCoordinates[:,:1]
       # (Nsamples*Npoints*maxNumNeighs, descriptorDim)       
       LL = tf.concat([L1, L2], axis = 1)
       # (Nsamples*Npoints*maxNumNeighs, 2*descriptorDim)
@@ -217,11 +223,11 @@ class DeepMDsimpleEnergy(tf.keras.Model):
       # (Nsamples*Npoints, maxNumNeighs, 2*descriptorDim)
       D_short = tf.reduce_sum(Dtemp, axis = 1)
       # (Nsamples*Npoints, 2*descriptorDim)
-      long_range_coord = self.NUFFTLayer(inputs) 
+      long_range_coord = self.lrc_layer(inputs) 
       # # (Nsamples, Ncells*Np, 1)
       long_range_coord2 = tf.reshape(long_range_coord, (-1, self.fftChannels))
       # (Nsamples*Ncells*Np, 1)
-      L3   = self.layerPyramidLongRange(long_range_coord2)      
+      L3   = self.layer_pyramid_lr(long_range_coord2)      
       DLongRange = tf.concat([D_short, L3], axis = 1)
       F2 = self.fittingNetwork(DLongRange)
       F = self.linfitNet(F2)
@@ -295,10 +301,10 @@ if DataType == "Periodic":
 if DataType == "YukawaPeriodic":
     pointsTest, \
     potentialTest, \
-    forcesTest = genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, 100, 
+    forcesTest = gen_data_yukawa_2d_mixed(Ncells, Np, mu1, mu2, 100, 
                                           minDelta, Lcell, weight1, weight2)
     
-IdxTest = computInterList2DOpt(pointsTest, L, radious, maxNumNeighs)
+IdxTest = comput_inter_list(pointsTest, L, radious, maxNumNeighs)
 neighListTest = tf.Variable(IdxTest)
 
 ###################training loop ##################################
@@ -330,10 +336,10 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
     for step, x_batch_train in enumerate(train_dataset):
 
       Rinnumpy = x_batch_train[0].numpy()
-      Idx = computInterList2DOpt(Rinnumpy, L, radious, maxNumNeighs)
+      Idx = comput_inter_list(Rinnumpy, L, radious, maxNumNeighs)
       neighList = tf.Variable(Idx)
 
-      loss = trainStepList(model, optimizer, mse_loss_fn,
+      loss = train_step(model, optimizer, mse_loss_fn,
                            x_batch_train[0], neighList,
                            x_batch_train[1], 
                            x_batch_train[2], weightE, weightF)
@@ -342,7 +348,7 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
       if step % 100 == 0:
         print('step %s: mean loss = %s' % (step, str(loss_metric.result().numpy())))
 
-    Idx = computInterList2DOpt(pointsArray[:10,:,:], L, radious, maxNumNeighs)
+    Idx = comput_inter_list(pointsArray[:10,:,:], L, radious, maxNumNeighs)
     neighList = tf.Variable(Idx)
 
     pottrain, forcetrain = model(pointsArray[:10,:,:],neighList)

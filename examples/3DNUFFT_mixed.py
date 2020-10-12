@@ -1,5 +1,3 @@
-
-
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,10 +9,14 @@ import json
 import time
 
 
-from data_gen_3d import genDataPer3DMixed
-from nufft_layers_3d import NUFFTLayerMultiChannel3D
-from utilities_3d import genDistInvPerNlistVec3D, trainStepList, computInterList2DOpt
-from utilities_3d import MyDenseLayer, pyramidLayer
+from long_range_conv.gen_data.data_gen_3d import gen_data_per_3d_mixed
+from long_range_conv.lrc_layers.nufft_layers_3d import NUFFTLayerMultiChannel3D
+
+from long_range_conv.utilities_3d import gen_coor_3d
+from long_range_conv.utilities_3d import train_step
+from long_range_conv.utilities_3d import comput_inter_list
+from long_range_conv.utilities_3d import DenseLayer
+from long_range_conv.utilities_3d import PyramidLayer
 
 
 
@@ -140,12 +142,12 @@ Rin = Rinput[:100,:,:]
 Rinnumpy = Rin.numpy()
 
 
-Idx = computInterList2DOpt(Rinnumpy, L,  radious, maxNumNeighs)
+Idx = comput_inter_list(Rinnumpy, L,  radious, maxNumNeighs)
 neigh_list = tf.Variable(Idx)
 Npoints = Np*Ncells**3
 
 # we compute the generated coordinate in order to obtain av and std
-gen_coordinates = genDistInvPerNlistVec3D(Rin, neigh_list, L)
+gen_coordinates = gen_coor_3d(Rin, neigh_list, L)
 filter = tf.cast(tf.reduce_sum(tf.abs(gen_coordinates), axis = -1)>0, tf.int32)
 numNonZero =  tf.reduce_sum(filter, axis = 0).numpy()
 numTotal = gen_coordinates.shape[0]  
@@ -200,23 +202,23 @@ class DeepMDsimpleEnergyNUFFT(tf.keras.Model):
     self.mu1 = mu1
     self.mu2 = mu2
     # we may need to use the tanh here
-    self.layerPyramid = pyramidLayer(descripDim, actfn = tf.nn.tanh)    
-    self.layerPyramidDir = pyramidLayer(descripDim, actfn = tf.nn.tanh)    
-    self.NUFFTLayer = NUFFTLayerMultiChannel3D(fftChannels,NpointsFourier, 
+    self.layerPyramid = PyramidLayer(descripDim, actfn = tf.nn.tanh)    
+    self.layerPyramidDir = PyramidLayer(descripDim, actfn = tf.nn.tanh)    
+    self.lrc_layer = NUFFTLayerMultiChannel3D(fftChannels,NpointsFourier, 
                                                xLims, mu1, mu2)
-    self.layerPyramidLongRange = pyramidLayer(descripDim, actfn = tf.nn.relu)
-    self.fittingNetwork = pyramidLayer(fittingDim, actfn = tf.nn.tanh)
-    self.linfitNet = MyDenseLayer(1)    
+    self.layerPyramidLongRange = PyramidLayer(descripDim, actfn = tf.nn.relu)
+    self.fittingNetwork = PyramidLayer(fittingDim, actfn = tf.nn.tanh)
+    self.linfitNet = DenseLayer(1)    
 
   @tf.function
-  def call(self, inputs, neighList):
+  def call(self, inputs, neigh_list):
 
     with tf.GradientTape() as tape:
       # we watch the inputs 
       tape.watch(inputs)
       # shape (Nsamples, Npoints)
-      gen_coordinates = genDistInvPerNlistVec3D(inputs, 
-                                          neighList, self.L, 
+      gen_coordinates = gen_coor_3d(inputs, 
+                                          neigh_list, self.L, 
                                           self.av, self.std)
       # (Nsamples*Npoints*maxNumNeighs, 3)
       L1 = self.layerPyramid(gen_coordinates[:,:1])*gen_coordinates[:,:1]
@@ -228,7 +230,7 @@ class DeepMDsimpleEnergyNUFFT(tf.keras.Model):
       # (Nsamples*Ncells*Np, maxNumNeighs, descriptorDim)
       D = tf.reduce_sum(Dtemp, axis = 1)
       # (Nsamples*Npoints, descriptorDim*descriptorDim)
-      long_range_coord = self.NUFFTLayer(inputs)
+      long_range_coord = self.lrc_layer(inputs)
       long_range_coord2 = tf.reshape(long_range_coord, (-1, self.fftChannels))
       # (Nsamples*Ncells*Np, 1)
       L3   = self.layerPyramidLongRange(long_range_coord2)
@@ -252,7 +254,7 @@ model = DeepMDsimpleEnergyNUFFT(Npoints, L, maxNumNeighs,
 # quick run of the model to check that it is correct.
 Rin2 = Rinput[:2,:,:] 
 Rinnumpy = Rin2.numpy()
-Idx = computInterList2DOpt(Rinnumpy, L,  radious, maxNumNeighs)
+Idx = comput_inter_list(Rinnumpy, L,  radious, maxNumNeighs)
 neigh_list2 = tf.Variable(Idx)
 
 E, F = model(Rin2, neigh_list2)
@@ -304,18 +306,17 @@ loss_metric = tf.keras.metrics.Mean()
 
 ##################train-test split #############################
 
-
-
 points_train = pointsArray
 forces_train = forcesArray
 potential_train = potentialArray
 
 points_test, \
 potential_test, \
-forces_test  = genDataPer3DMixed(Ncells, Np, mu1, mu2, 100, minDelta, Lcell,
-                                     weight1, weight2)
+forces_test  = genDataPer3DMixed(Ncells, Np, mu1, mu2, 
+                                 100, minDelta, Lcell,
+                                 weight1, weight2)
 
-Idx_test = computInterList2DOpt(points_test, L, radious, maxNumNeighs)
+Idx_test = comput_inter_list(points_test, L, radious, maxNumNeighs)
 
 # (Nsamples, Npoints and MaxNumneighs)
 neigh_list_test = tf.Variable(Idx_test)
@@ -356,22 +357,23 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
     for step, x_batch_train in enumerate(train_dataset):
 
       Rinnumpy = x_batch_train[0].numpy()
-      Idx = computInterList2DOpt(Rinnumpy, L,  radious, maxNumNeighs)
-      neighList = tf.Variable(Idx)
+      Idx = comput_inter_list(Rinnumpy, L,  radious, maxNumNeighs)
+      neigh_list = tf.Variable(Idx)
 
-      loss = trainStepList(model, optimizer, mse_loss_fn,
-                           x_batch_train[0], neighList,
-                           x_batch_train[1], x_batch_train[2], weightE, weightF)
+      loss = train_step(model, optimizer, mse_loss_fn,
+                        x_batch_train[0], neigh_list,
+                        x_batch_train[1], x_batch_train[2], weightE, weightF)
       loss_metric(loss)
 
 
       if step % 100 == 0:
         print('step %s: mean loss = %s' % (step, str(loss_metric.result().numpy())))
 
-    Idx = computInterList2DOpt(points_train[:10,:,:], L,  radious, maxNumNeighs)
-    neighList = tf.Variable(Idx)
 
-    pottrain, forcetrain = model(points_train[:10,:,:],neighList)
+    Idx = comput_inter_list(points_train[:10,:,:], L,  radious, maxNumNeighs)
+    neigh_list = tf.Variable(Idx)
+
+    pottrain, forcetrain = model(points_train[:10,:,:],neigh_list)
     errtrain = tf.sqrt(tf.reduce_sum(tf.square(forcetrain - forces_train[:10,:,:])))\
                /tf.sqrt(tf.reduce_sum(tf.square(forcetrain)))
     print("Relative Error in the trained forces is " +str(errtrain.numpy()))
@@ -399,7 +401,7 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
   for step, x_batch_test in enumerate(test_dataset):
 
     Rinnumpy = x_batch_test[0].numpy()
-    Idx = computInterList2DOpt(Rinnumpy, L,  radious, maxNumNeighs)
+    Idx = comput_inter_list(Rinnumpy, L,  radious, maxNumNeighs)
     neigh_list_test = tf.Variable(Idx)
 
     pot_pred, force_pred = model(x_batch_test[0], neigh_list_test)

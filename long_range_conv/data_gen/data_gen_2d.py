@@ -3,15 +3,12 @@ import numpy as np
 def potential(x,y, mu):
     return -np.exp(-mu*np.sqrt(np.sum(np.square(y - x), axis = -1)))
 
-
-
 def forces(x,y, mu):
     return -mu*(y - x)/(np.finfo(float).eps+np.sqrt(np.sum(np.square(y - x), \
             axis = -1, keepdims = True)))*np.exp(-mu*np.sqrt(np.sum(np.square(y - x), axis = -1, keepdims = True)))
 
-
 # compute exponential potential 
-def potentialPer(x,y, mu, L):
+def potential_per(x,y, mu, L):
     shift_x = np.reshape(np.array([L, 0.]), (1,1,2))
     shift_y = np.reshape(np.array([0., L]), (1,1,2))
     return potential(x,y, mu) + potential(x+shift_x,y, mu) + potential(x-shift_x,y, mu)\
@@ -19,21 +16,18 @@ def potentialPer(x,y, mu, L):
            +potential(x-shift_y,y, mu) + potential(x+shift_x-shift_y,y, mu) + potential(x-shift_x-shift_y,y, mu)
 
 # compute exponential force
-def forcesPer(x,y, mu, L):
+def forces_per(x, y, mu, L):
     shift_x = np.reshape(np.array([L, 0.]), (1,1,2))
     shift_y = np.reshape(np.array([0., L]), (1,1,2))
     return   forces(x,y, mu) + forces(x+shift_x,y, mu) + forces(x-shift_x,y, mu)\
            + forces(x+shift_y,y, mu) + forces(x+shift_x+shift_y,y, mu) + forces(x-shift_x+shift_y,y, mu)\
            + forces(x-shift_y,y, mu) + forces(x+shift_x-shift_y,y, mu) + forces(x-shift_x-shift_y,y, mu)
 
-
-def gaussian2D(x,y, center, tau):
+# 2D gaussian
+def gaussian_2d(x, y, center, tau):
     return (1/(2*np.pi*(tau**2)))*\
            np.exp( -0.5*(  np.square(x - center[0])
                          + np.square(y - center[1]))/tau**2)
-
-
-
 
 
 def computeDerPot2DPer(Nx, mu, Ls, x_center = [0.0, 0.0], nPointSmear = 5):   
@@ -58,7 +52,7 @@ def computeDerPot2DPer(Nx, mu, Ls, x_center = [0.0, 0.0], nPointSmear = 5):
 
 
     # define the periodic gaussian
-    tau_gauss = gaussian2D(x_diff_per,y_diff_per, [0.0, 0.0], tau)
+    tau_gauss = gaussian_2d(x_diff_per,y_diff_per, [0.0, 0.0], tau)
 
     # compute the fourier transform of the gaussian 
     xFFT = np.fft.fftshift(np.fft.fft2(tau_gauss))
@@ -77,17 +71,19 @@ def computeDerPot2DPer(Nx, mu, Ls, x_center = [0.0, 0.0], nPointSmear = 5):
 
 
 # compute Yukawa data
-def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,weight2): 
+def gen_data_yukawa_2d_mixed(n_cells, Np, mu1, mu2,  
+                             n_samples, min_delta, L_cell,
+                             weight1, weight2): 
 
-    points_array = np.zeros((Nsamples, Np*Ncells**2, 2))
-    potential_array = np.zeros((Nsamples,1))
-    forces_array = np.zeros((Nsamples, Np*Ncells**2, 2))
-    sizeCell = Lcell
+    points_array = np.zeros((n_samples, Np*n_cells**2, 2))
+    potential_array = np.zeros((n_samples,1))
+    forces_array = np.zeros((n_samples, Np*n_cells**2, 2))
+    size_cell = L_cell
 
     # define a mesh
     NpointsPerCell = 1000
-    Nx = Ncells*NpointsPerCell + 1
-    Ls = Ncells*sizeCell
+    Nx = n_cells*NpointsPerCell + 1
+    Ls = n_cells*size_cell
     
     # compute grid, potential, force for different mu
     x_grid, y_grid, pot1, dpotdx1, dpotdy1 = computeDerPot2DPer(Nx, mu1, Ls)
@@ -96,29 +92,29 @@ def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weig
 
     # centering the points within each cell 
     idxCell = np.linspace(0,NpointsPerCell-1, NpointsPerCell).astype(int)
-    idxStart = np.array([ii*NpointsPerCell for ii in range(Ncells)]).reshape(-1,1)
+    idxStart = np.array([ii*NpointsPerCell for ii in range(n_cells)]).reshape(-1,1)
     idx_cell_y, idx_cell_x = np.meshgrid(idxCell, idxCell) 
     idx_start_y, idx_start_x = np.meshgrid(idxStart, idxStart) 
 
-    for i in range(Nsamples):
+    for i in range(n_samples):
 
         dist = 0.0
         # generate the index randomly
-        idx_point_x = idx_start_x.reshape((Ncells, Ncells, 1)) \
+        idx_point_x = idx_start_x.reshape((n_cells, n_cells, 1)) \
                       + np.random.choice(idx_cell_x.reshape((-1,)), 
-                                         [Ncells, Ncells, Np])
-        idx_point_y = idx_start_y.reshape((Ncells, Ncells, 1)) \
+                                         [n_cells, n_cells, Np])
+        idx_point_y = idx_start_y.reshape((n_cells, n_cells, 1)) \
                       + np.random.choice(idx_cell_y.reshape((-1,)), 
-                                         [Ncells, Ncells, Np])
+                                         [n_cells, n_cells, Np])
         
         # to avoid two points are too close: sigularity 
-        while np.min(dist) < minDelta:
-            idx_point_x = idx_start_x.reshape((Ncells, Ncells, 1)) \
+        while np.min(dist) < min_delta:
+            idx_point_x = idx_start_x.reshape((n_cells, n_cells, 1)) \
                           + np.random.choice(idx_cell_x.reshape((-1,)), 
-                                             [Ncells, Ncells, Np])
-            idx_point_y = idx_start_y.reshape((Ncells, Ncells, 1)) \
+                                             [n_cells, n_cells, Np])
+            idx_point_y = idx_start_y.reshape((n_cells, n_cells, 1)) \
                           + np.random.choice(idx_cell_y.reshape((-1,)), 
-                                             [Ncells, Ncells, Np])
+                                             [n_cells, n_cells, Np])
 
             points_x = x_grid[idx_point_x, 0]
             points_y = y_grid[0, idx_point_y]
@@ -131,7 +127,7 @@ def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weig
             dist = np.sqrt(np.square(diff_x) + np.square(diff_y))
             # the diagonal will be zero, so we add a diagonal to properly 
             # comput the minimal distance
-            dist += 10*np.eye(Ncells**2*Np)
+            dist += 10*np.eye(n_cells**2*Np)
 
         # compute the points,weighted energy and weighte force
         points_array[i, :, 0] = x_grid[idx_point_x.reshape((-1,)), 0]
@@ -181,54 +177,56 @@ def genDataYukawa2DPermixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weig
     return points_array, potential_array, forces_array
 
 # compute exponential data
-def genDataPer2DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta = 0.0, Lcell = 0.0, weight1=0.5, weight2=0.5): 
+def gen_data_per_2d_mixed(n_cells, Np, mu1, mu2, 
+                          n_samples, min_delta = 0.0, L_cell = 0.0, 
+                          weight1 = 0.5, weight2 = 0.5): 
 
-	pointsArray = np.zeros((Nsamples, Np*Ncells**2, 2))
-	potentialArray = np.zeros((Nsamples,1))
-	forcesArray = np.zeros((Nsamples, Np*Ncells**2, 2))
-	sizeCell = Lcell
-	L = sizeCell*Ncells
+	pointsArray = np.zeros((n_samples, Np*n_cells**2, 2))
+	potentialArray = np.zeros((n_samples,1))
+	forcesArray = np.zeros((n_samples, Np*n_cells**2, 2))
+	size_cell = L_cell
+	L = size_cell*n_cells
 
     # define a mesh
-	midPoints = np.linspace(sizeCell/2.0,Ncells*sizeCell-sizeCell/2.0, Ncells)
+	midPoints = np.linspace(size_cell/2.0,n_cells*size_cell-size_cell/2.0, n_cells)
 	xx, yy = np.meshgrid(midPoints, midPoints)
-	midPoints = np.concatenate([np.reshape(xx, (Ncells,Ncells,1,1)), 
-								np.reshape(yy, (Ncells,Ncells,1,1))], axis = -1) 
+	midPoints = np.concatenate([np.reshape(xx, (n_cells,n_cells,1,1)), 
+								np.reshape(yy, (n_cells,n_cells,1,1))], axis = -1) 
 
-	for i in range(Nsamples):
+	for i in range(n_samples):
         # generate the index randomly
-		points = midPoints + sizeCell*(np.random.rand(Ncells, Ncells, Np,2) -0.5)
+		points = midPoints + size_cell*(np.random.rand(n_cells, n_cells, Np,2) -0.5)
 		relPoints = np.reshape(points, (-1,1,2)) -np.reshape(points, (1,-1,2))
 		relPointsPer = relPoints - L*np.round(relPoints/L)
 		distPoints = np.sqrt(np.sum(np.square(relPointsPer), axis=-1))
 
         # to avoid two points are too close: sigularity
-		while np.min( distPoints[distPoints>0] ) < minDelta:
-		    points = midPoints + sizeCell*(np.random.rand(Ncells, Ncells, Np,2)-0.5)
+		while np.min( distPoints[distPoints>0] ) < min_delta:
+		    points = midPoints + size_cell*(np.random.rand(n_cells, n_cells, Np,2)-0.5)
 		    relPoints = np.reshape(points, (-1,1,2)) -np.reshape(points, (1,-1,2))  
 		    relPointsPer = relPoints - L*np.round(relPoints/L)    
 		    distPoints = np.sqrt(np.sum(np.square(relPointsPer), axis=-1))            
             
         # compute the points,weighted energy and weighte force    
-		pointsArray[i, :, :] = np.reshape(points,(Np*Ncells**2, 2))
-		points = np.reshape(points, (Np*Ncells**2,1,2))
-		pointsT = np.reshape(points, (1,Np*Ncells**2,2))
+		pointsArray[i, :, :] = np.reshape(points,(Np*n_cells**2, 2))
+		points = np.reshape(points, (Np*n_cells**2,1,2))
+		pointsT = np.reshape(points, (1,Np*n_cells**2,2))
 
-		R1 = potentialPer(points, pointsT, mu1, L)
+		R1 = potential_per(points, pointsT, mu1, L)
 		RR1 = np.triu(R1, 1)
 		potTotal1 = np.sum(RR1)
 
-		R2 = potentialPer(points, pointsT, mu2, L)
+		R2 = potential_per(points, pointsT, mu2, L)
 		RR2 = np.triu(R2, 1)
 		potTotal2 = np.sum(RR2)
         
 		potentialArray[i,:] = potTotal1*weight1 + potTotal2*weight2
-		F1 = forcesPer(points,pointsT, mu1, L)
+		F1 = forces_per(points,pointsT, mu1, L)
 		Forces1 = np.sum(F1, axis = 1)
-		F2 = forcesPer(points,pointsT, mu2, L)
+		F2 = forces_per(points,pointsT, mu2, L)
 		Forces2 = np.sum(F2, axis = 1)
         
-		forcesArray[i,:,:] = np.reshape(Forces1,(Np*Ncells**2, 2))*weight1 +\
-                             np.reshape(Forces2,(Np*Ncells**2, 2))*weight2
+		forcesArray[i,:,:] = np.reshape(Forces1,(Np*n_cells**2, 2))*weight1 +\
+                             np.reshape(Forces2,(Np*n_cells**2, 2))*weight2
 
 	return pointsArray, potentialArray, forcesArray

@@ -61,7 +61,7 @@ class pyramidLayer(tf.keras.layers.Layer):
 ## Training functions ##
 
 @tf.function
-def trainStepList(model, optimizer, loss,
+def train_step(model, optimizer, loss,
                     inputs, neigh_list, output_E, output_f, 
                     weight_e, weight_f):
 
@@ -122,6 +122,7 @@ def comput_inter_list(r_in, L,  radious, max_num_neighs):
 
   return Idx
 
+## Generalized coordinates ##
 
 @tf.function
 def gen_coor_1d(r_in, neigh_list, L, 
@@ -155,6 +156,7 @@ def gen_coor_1d(r_in, neigh_list, L,
                          tf.reshape(bnorm_safe, (-1,1))], axis = 1)
     return r_total
 
+
 @tf.function
 def gen_coor_2d(r_in, neigh_list, L, 
                 av = tf.constant([0.0, 0.0], dtype = tf.float32),
@@ -162,7 +164,7 @@ def gen_coor_2d(r_in, neigh_list, L,
     # This function follows the same trick 
     # function to generate the generalized coordinates for periodic data
     # neigh_list is a (Nsample, Npoints, maxNeigh)
-    
+
     n_samples = r_in.shape[0]
     max_num_neighs = neigh_list.shape[-1]
     # define an indicator
@@ -192,14 +194,14 @@ def gen_coor_2d(r_in, neigh_list, L,
     bx_safe = tf.where(mask, bx, zeroDummy)
     by_safe = tf.where(mask, by, zeroDummy)
     
-    R_total = tf.concat([tf.reshape(binv_safe, (-1,1)), 
+    r_total = tf.concat([tf.reshape(binv_safe, (-1,1)), 
                          tf.reshape(bx_safe, (-1,1)), 
                          tf.reshape(by_safe, (-1,1))], axis = 1)
 
-    return R_total
+    return r_total
 
 @tf.function
-def genDistInvPerNlistVec3D(r_in, neigh_list, L, 
+def gen_coor_3d(r_in, neigh_list, L, 
                             av = tf.constant([0.0, 0.0], dtype = tf.float32),
                             std =  tf.constant([1.0, 1.0], dtype = tf.float32)):
 
@@ -251,10 +253,10 @@ def genDistInvPerNlistVec3D(r_in, neigh_list, L,
     by_safe = tf.where(mask, by, zeroDummy)
     bz_safe = tf.where(mask, bz, zeroDummy)
     
-    R_total = tf.concat([tf.reshape(binv_safe, (-1,1)), 
+    r_total = tf.concat([tf.reshape(binv_safe, (-1,1)), 
                          tf.reshape(bx_safe,   (-1,1)), 
                          tf.reshape(by_safe,   (-1,1)),
                          tf.reshape(bz_safe,   (-1,1)) ], axis = 1)
 
-    return R_total
+    return r_total
 

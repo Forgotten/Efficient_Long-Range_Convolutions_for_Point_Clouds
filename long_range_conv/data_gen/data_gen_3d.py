@@ -8,21 +8,15 @@ def potential(x,y, mu):
 
     return -np.exp(-mu*np.sqrt(np.sum(np.square(y - x), axis = -1)))
 
-
-
 def potential_diff(diff, mu):
 
     return -np.exp(-mu*np.sqrt(np.sum(np.square(diff), axis = -1)))
-
-
 
 def forces(x,y, mu):
 
     return -mu*(y - x)/(np.finfo(float).eps+np.sqrt(np.sum(np.square(y - x), \
                                                            axis = -1, keepdims = True)))\
            *np.exp(-mu*np.sqrt(np.sum(np.square(y - x), axis = -1, keepdims = True)))
-
-
 
 def forces_diff(diff, mu):
 
@@ -32,10 +26,7 @@ def forces_diff(diff, mu):
                                       axis = -1, keepdims = True)))
 
 
-
-
-
-def potential_per3D(x,y, mu, L):
+def potential_per_3d(x,y, mu, L):
     diff = y - x
     diff_per = diff - L*np.round(diff/L)
     return    potential_diff(diff_per, mu)
@@ -58,7 +49,7 @@ def gaussian3D(x, y, z, center, tau):
 
 
 
-def genDataPer3DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,weight2): 
+def gen_data_per_3d_mixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,weight2): 
 
 
 
@@ -104,11 +95,11 @@ def genDataPer3DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,we
         points  = np.reshape(points, (Np*Ncells**3, 1, 3))
         pointsT = np.reshape(points, (1, Np*Ncells**3, 3))
 
-        R1 = potential_per3D(points, pointsT, mu1, L)
+        R1 = potential_per_3d(points, pointsT, mu1, L)
         RR1 = np.triu(R1, 1)
         potTotal1 = np.sum(RR1)
 
-        R2 = potential_per3D(points, pointsT, mu2, L)
+        R2 = potential_per_3d(points, pointsT, mu2, L)
         RR2 = np.triu(R2, 1)
         potTotal2 = np.sum(RR2)
 
