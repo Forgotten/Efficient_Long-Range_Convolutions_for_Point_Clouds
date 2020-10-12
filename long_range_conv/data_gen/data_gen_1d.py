@@ -1,26 +1,25 @@
 import numpy as np
 
-def potential_Per(x,y, mu,L):
+def potential_per(x,y, mu,L):
     return np.exp( -mu*np.abs(y - x) )+\
            np.exp( -mu*np.abs(y - x - L) )+\
            np.exp( -mu*np.abs(y - x + L) )
 
-def forces_Per(x,y, mu,L):
+def forces_per(x,y, mu,L):
     return -mu*np.sign(y - x)*np.exp( -mu*np.abs(y - x) ) +\
            -mu*np.sign(y - x - L)*np.exp( -mu*np.abs(y - x - L) ) +\
            -mu*np.sign(y - x + L)*np.exp( -mu*np.abs(y - x + L) )
 
-def gen_data_Per_Mixed(Ncells, Np, mu1, mu2, Nsamples, minDelta = 0.0, Lcell = 0.0 , weight1=0.5 , weight2=0.5):
+def gen_data_per_Mixed(Ncells, Np, mu1, mu2, n_samples, minDelta = 0.0, Lcell = 0.0 , weight1=0.5 , weight2=0.5):
     
-    pointsArray = np.zeros((Nsamples, Np*Ncells))
-    potentialArray = np.zeros((Nsamples,1))
-    forcesArray = np.zeros((Nsamples, Np*Ncells))
-    
+    pointsArray = np.zeros((n_samples, Np*Ncells))
+    potentialArray = np.zeros((n_samples,1))
+    forcesArray = np.zeros((n_samples, Np*Ncells))
 
     sizeCell = Lcell 
     L = sizeCell*Ncells
     
-    for i in range(Nsamples):
+    for i in range(n_samples):
         midPoints = np.linspace(sizeCell/2.0,Ncells*sizeCell-sizeCell/2.0, Ncells)
 
         points = midPoints + sizeCell*(np.random.rand(Np, Ncells) -0.5)
@@ -35,17 +34,17 @@ def gen_data_Per_Mixed(Ncells, Np, mu1, mu2, Nsamples, minDelta = 0.0, Lcell = 0
             
         pointsArray[i, :] = points.T
 
-        R1 = potential_Per(points,points.T, mu1,L)
+        R1 = potential_per(points,points.T, mu1,L)
         RR1 = np.triu(R1, 1)
         potTotal1 = np.sum(RR1)
-        R2 = potential_Per(points,points.T, mu2,L)
+        R2 = potential_per(points,points.T, mu2,L)
         RR2 = np.triu(R2, 1)
         potTotal2 = np.sum(RR2)
         potentialArray[i,:] = weight1*potTotal1+weight2*potTotal2
 
-        F1 = forces_Per(points,points.T, mu1,L)
+        F1 = forces_per(points,points.T, mu1,L)
         Forces1 = np.sum(F1, axis = 1)
-        F2 = forces_Per(points,points.T, mu2,L)
+        F2 = forces_per(points,points.T, mu2,L)
         Forces2 = np.sum(F2, axis = 1)
         forcesArray[i,:] = weight1*Forces1.T + weight2*Forces2.T
 
@@ -53,11 +52,11 @@ def gen_data_Per_Mixed(Ncells, Np, mu1, mu2, Nsamples, minDelta = 0.0, Lcell = 0
 
 
 
-def genDataYukawaPerMixed(Ncells, Np, sigma1, sigma2, Nsamples, minDelta = 0.0, Lcell = 0.0,weight1=0.5,weight2=0.5):
+def genDataYukawaPerMixed(Ncells, Np, sigma1, sigma2, n_samples, minDelta = 0.0, Lcell = 0.0,weight1=0.5,weight2=0.5):
 
-    pointsArray = np.zeros((Nsamples, Np*Ncells))
-    potentialArray = np.zeros((Nsamples,1))
-    forcesArray = np.zeros((Nsamples, Np*Ncells))
+    pointsArray = np.zeros((n_samples, Np*Ncells))
+    potentialArray = np.zeros((n_samples,1))
+    forcesArray = np.zeros((n_samples, Np*Ncells))
 
 
     sizeCell = Lcell
@@ -72,7 +71,7 @@ def genDataYukawaPerMixed(Ncells, Np, sigma1, sigma2, Nsamples, minDelta = 0.0, 
     idxCell = np.linspace(0,NpointsPerCell-1, NpointsPerCell).astype(int)
     idxStart = np.array([ii*NpointsPerCell for ii in range(Ncells)]).reshape(-1,1)
 
-    for i in range(Nsamples):
+    for i in range(n_samples):
 
         idxPointCell = idxStart + np.random.choice(idxCell, [Ncells, Np  ])
         idxPointCell = np.sort(idxPointCell.reshape((-1,1)), axis = 0) ##position

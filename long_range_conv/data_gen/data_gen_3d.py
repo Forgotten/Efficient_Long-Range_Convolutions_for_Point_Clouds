@@ -80,8 +80,6 @@ def genDataPer3DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,we
                                 np.reshape(zz, (Ncells, Ncells, 
                                                 Ncells, 1,1))], axis = -1) 
 
-
-
     for i in range(Nsamples):
 
         # generate the index randomly
@@ -90,8 +88,6 @@ def genDataPer3DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,we
         relPoints = np.reshape(points, (-1,1,3)) -np.reshape(points, (1,-1,3))
         relPointsPer = relPoints - L*np.round(relPoints/L)
         distPoints = np.sqrt(np.sum(np.square(relPointsPer), axis=-1))
-
-
 
         # to avoid two points are too close: sigularity
         while np.min( distPoints[distPoints>0] ) < minDelta:
@@ -108,8 +104,6 @@ def genDataPer3DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,we
         points  = np.reshape(points, (Np*Ncells**3, 1, 3))
         pointsT = np.reshape(points, (1, Np*Ncells**3, 3))
 
-
-
         R1 = potential_per3D(points, pointsT, mu1, L)
         RR1 = np.triu(R1, 1)
         potTotal1 = np.sum(RR1)
@@ -119,7 +113,6 @@ def genDataPer3DMixed(Ncells, Np, mu1, mu2, Nsamples, minDelta, Lcell,weight1,we
         potTotal2 = np.sum(RR2)
 
         potentialArray[i,:] = potTotal1*weight1+potTotal2*weight2
-
 
 
         F1 = forces_per3D(points,pointsT, mu1, L)
