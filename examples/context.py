@@ -2,4 +2,4 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import long_range_convolutions
+import long_range_conv

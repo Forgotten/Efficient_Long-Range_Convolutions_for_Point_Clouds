@@ -9,21 +9,26 @@ import json
 import csv
 import time
 
-from data_gen_1d import genDataYukawaPerMixed,gen_data_Per_Mixed
-from utilities_1d import genDistInvPerNlistVec, trainStepList, computInterListOpt
-from utilities_1d import MyDenseLayer, pyramidLayer
-from nufft_layers_1d import NUFFTLayerMultiChannelInitMixed
+from long_range_conv.data_gen.data_gen_1d import genDataYukawaPerMixed,gen_data_Per_Mixed
+from long_range_conv.utilities import gen_coor_1d 
+from long_range_conv.utilities import trainStepList
+from long_range_conv.utilities import comput_inter_list
 
+# import vanilla layers 
+from long_range_conv.utilities import DenseLayer
+from long_range_conv.utilities import PyramidLayer
 
+from long_range_conv.lrc_layers.nufft_layers_1d import NUFFTLayerMultiChannelInitMixed
 
 import os
 
+# these seem necessary to run under Mac OS X.
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 nameScript = sys.argv[0].split('/')[-1]
 
 
-# we are going to give all the arguments using a Json file
+# All the arguments are fed via a  Json file 
 nameJson = sys.argv[1]
 print("=================================================")
 print("Executing " + nameScript + " following " + nameJson, flush = True)
@@ -111,8 +116,7 @@ if not path.exists(dataFile):
     forcesArray = genDataYukawaPerMixed(Ncells, Np, mu1, mu2, Nsamples, 
                                          minDelta, Lcell, weight1, weight2)
     
-    
-    
+  # creating file to write the data
   hf = h5py.File(dataFile, 'w') 
   
   hf.create_dataset('points', data=pointsArray)   
@@ -139,16 +143,16 @@ Idx = computInterListOpt(Rinnumpy, L,  radious, maxNumNeighs)
 neighList = tf.Variable(Idx)
 Npoints = Np*Ncells
 
-genCoordinates = genDistInvPerNlistVec(Rin, neighList, L)
+gen_coords = gen_coor_1d(Rin, neighList, L)
 # compute the generated coordinates in order to obtain av and std
-filter = tf.cast(tf.reduce_sum(tf.abs(genCoordinates), axis = -1)>0, tf.int32)
+filter = tf.cast(tf.reduce_sum(tf.abs(gen_coords), axis = -1)>0, tf.int32)
 numNonZero =  tf.reduce_sum(filter, axis = 0).numpy()
-numTotal = genCoordinates.shape[0] 
+numTotal = gen_coords.shape[0] 
 
-av = tf.reduce_sum(genCoordinates, 
+av = tf.reduce_sum(gen_coords, 
                     axis = 0, 
                     keepdims =True).numpy()[0]/numNonZero
-std = np.sqrt((tf.reduce_sum(tf.square(genCoordinates - av), 
+std = np.sqrt((tf.reduce_sum(tf.square(gen_coords - av), 
                              axis = 0, 
                              keepdims=True).numpy()[0] - av**2*(numTotal-numNonZero)) /numNonZero)
 
@@ -187,24 +191,27 @@ class DeepMDsimpleForces(tf.keras.Model):
     # we normalize the inputs (should help for the training)
     self.av = av
     self.std = std
+    # the lengthscales 
     self.mu1 = mu1
     self.mu2 = mu2
+
     self.descripDim = descripDim
     self.fittingDim = fittingDim
     self.descriptorDim = descripDim[-1]
     self.NpointsFourier = NpointsFourier
     self.fftChannels = fftChannels 
-    self.layerPyramid = pyramidLayer(descripDim, 
+    self.layer_pyramid = PyramidLayer(descripDim, 
                                        actfn = tf.nn.tanh)
-    self.layerPyramidInv = pyramidLayer(descripDim, 
+    self.layer_pyramid_inv = PyramidLayer(descripDim, 
                                        actfn = tf.nn.tanh)
-    self.NUFFTLayerMultiChannelInitMixed = NUFFTLayerMultiChannelInitMixed(fftChannels, \
-                                                                           NpointsFourier, xLims, mu1,mu2)
-    self.layerPyramidLongRange = pyramidLayer(descripDim, 
+    self.lrc_layer = NUFFTLayerMultiChannelInitMixed(fftChannels, \
+                                                     NpointsFourier, xLims, \
+                                                     mu1,mu2)
+    self.layer_pyramid_lr = PyramidLayer(descripDim, 
                                                actfn = tf.nn.relu)
-    self.fittingNetwork = pyramidLayer(fittingDim, 
+    self.fittingNetwork = PyramidLayer(fittingDim, 
                                        actfn = tf.nn.tanh)
-    self.linfitNet = MyDenseLayer(1)    
+    self.linfitNet = DenseLayer(1)    
 
   @tf.function
   def call(self, inputs, neighList):
@@ -213,11 +220,11 @@ class DeepMDsimpleForces(tf.keras.Model):
       # we watch the inputs 
       tape.watch(inputs)
       # (Nsamples, Npoints)
-      genCoordinates = genDistInvPerNlistVec(inputs, neighList, self.L, self.av, self.std)
+      gen_coords = gen_coor_1d(inputs, neighList, self.L, self.av, self.std)
 
-      L1   = self.layerPyramid(genCoordinates[:,1:])*genCoordinates[:,0:1]
+      L1   = self.layer_pyramid(gen_coords[:,1:])*gen_coords[:,0:1]
       # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
-      L2   = self.layerPyramidInv(genCoordinates[:,0:1])*genCoordinates[:,0:1]
+      L2   = self.layer_pyramid_inv(gen_coords[:,0:1])*gen_coords[:,0:1]
       # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
       LL = tf.concat([L1, L2], axis = 1)
       # (Nsamples*Npoints*maxNumNeighs, 2*descriptorDim)
@@ -225,10 +232,10 @@ class DeepMDsimpleForces(tf.keras.Model):
       # (Nsamples*Npoints, maxNumNeighs, 2*descriptorDim)
       D = tf.reduce_sum(Dtemp, axis = 1)
       # (Nsamples*Npoints, 2*descriptorDim)      
-      longRangewCoord = self.NUFFTLayerMultiChannelInitMixed(inputs)
+      longRangewCoord = self.lrc_layer(inputs)
       longRangewCoord2 = tf.reshape(longRangewCoord, (-1, self.fftChannels))
       # (Nsamples*Ncells*Np, 1)
-      L3   = self.layerPyramidLongRange(longRangewCoord2)
+      L3   = self.layer_pyramid_lr(longRangewCoord2)
       # (Nsamples*Ncells*Np, descriptorDim)
       DLongRange = tf.concat([D, L3], axis = 1)
       F2 = self.fittingNetwork(DLongRange)
